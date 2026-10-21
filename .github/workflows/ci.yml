@@ -100,7 +100,7 @@ jobs:
   dast:
     name: DAST (OWASP ZAP)
     runs-on: ubuntu-latest
-    needs: [build-test]
+    needs: [sast, sca]
     steps:
       - uses: actions/checkout@v5
 

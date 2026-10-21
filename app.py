@@ -1,11 +1,5 @@
-"""VERSION VOLONTAIREMENT VULNÉRABLE - à copier sur app.py dans la branche de démo.
-
-Deux failles introduites :
-  1. /greet : injection de commande OS (subprocess + shell=True + entrée utilisateur)
-  2. /user  : injection SQL (requête construite par concaténation)
-"""
+"""Application Flask de démonstration pour le TP2 DevSecOps (version SÉCURISÉE)."""
 import sqlite3
-import subprocess
 
 from flask import Flask, jsonify, request
 
@@ -15,6 +9,7 @@ USERS = [("alice", "admin"), ("bob", "user")]
 
 
 def get_db():
+    """Base SQLite en mémoire, recréée à chaque requête (démo uniquement)."""
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE users (name TEXT, role TEXT)")
     conn.executemany("INSERT INTO users VALUES (?, ?)", USERS)
@@ -37,8 +32,10 @@ def security_headers(resp):
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
+
 @app.get("/")
 def index():
+    # Les liens permettent au spider de ZAP de découvrir toutes les routes.
     return (
         "<!doctype html><html><head><title>TP2 DevSecOps</title></head><body>"
         "<h1>TP2 DevSecOps</h1><ul>"
@@ -57,19 +54,16 @@ def health():
 @app.get("/greet")
 def greet():
     name = request.args.get("name", "")
-    # ❌ VULNÉRABLE : l'entrée utilisateur est passée à un shell.
-    # Exemple d'attaque : /greet?name=x;cat /etc/passwd
-    output = subprocess.check_output(f"echo Bonjour {name}", shell=True, text=True)
-    return jsonify(message=output)
+    # Aucune commande système : on construit simplement la chaîne.
+    return jsonify(message=f"Bonjour {name}")
 
 
 @app.get("/user")
 def user():
     name = request.args.get("name", "")
     conn = get_db()
-    # ❌ VULNÉRABLE : concaténation -> injection SQL
-    # Exemple d'attaque : /user?name=x' OR '1'='1
-    row = conn.execute(f"SELECT name, role FROM users WHERE name = '{name}'").fetchone()
+    # Requête paramétrée -> pas d'injection SQL possible.
+    row = conn.execute("SELECT name, role FROM users WHERE name = ?", (name,)).fetchone()
     conn.close()
     if row is None:
         return jsonify(error="introuvable"), 404
