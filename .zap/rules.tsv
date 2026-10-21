@@ -1,0 +1,3 @@
+10049	IGNORE	(Storable and Cacheable Content - informatif)
+10036	IGNORE	(Server Leaks Version Information - en-tête gunicorn, informatif)
+90004	IGNORE	(Insufficient Site Isolation - informatif pour une démo)

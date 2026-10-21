@@ -1,0 +1,147 @@
+name: CI DevSecOps
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1) Pipeline de base : installation + tests unitaires
+  # ─────────────────────────────────────────────
+  build-test:
+    name: Build & tests unitaires
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances
+        run: pip install -r requirements-dev.txt
+
+      - name: Lancer les tests unitaires
+        run: pytest -v
+
+  # ─────────────────────────────────────────────
+  # 2) SAST : analyse statique du code source
+  # ─────────────────────────────────────────────
+  sast:
+    name: SAST (Bandit + Semgrep)
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Installer Bandit et Semgrep
+        run: pip install bandit==1.8.6 semgrep
+
+      # Rapport complet (toutes sévérités) conservé comme artefact
+      - name: Bandit - rapport complet
+        run: bandit -r . -x ./tests,./demo -f json -o bandit-report.json || true
+
+      # RÈGLE DE BLOCAGE : échec si une faille de sévérité HIGH est trouvée
+      - name: Bandit - security gate (HIGH)
+        run: bandit -r . -x ./tests,./demo --severity-level high --confidence-level medium
+
+      # RÈGLE DE BLOCAGE : --error => code retour 1 si une règle ERROR matche
+      - name: Semgrep - security gate (ERROR)
+        run: >
+          semgrep scan
+          --config p/python --config p/flask
+          --severity ERROR --error --exclude demo --exclude tests
+          --json --output semgrep-report.json
+
+      - name: Publier les rapports SAST
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapports-sast
+          path: |
+            bandit-report.json
+            semgrep-report.json
+
+  # ─────────────────────────────────────────────
+  # 3) SCA : analyse des dépendances (CVE connues)
+  # ─────────────────────────────────────────────
+  sca:
+    name: SCA (Trivy)
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v5
+
+      # RÈGLE DE BLOCAGE : exit-code 1 si CVE CRITICAL ou HIGH dans les dépendances
+      - name: Trivy - scan des dépendances
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          version: "v0.69.3"
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+  # ─────────────────────────────────────────────
+  # 4) DAST : déploiement éphémère + OWASP ZAP
+  # ─────────────────────────────────────────────
+  dast:
+    name: DAST (OWASP ZAP)
+    runs-on: ubuntu-latest
+    needs: [sast, sca]
+    steps:
+      - uses: actions/checkout@v5
+
+      # Environnement éphémère : un conteneur qui ne vit que le temps du job
+      - name: Construire l'image Docker
+        run: docker build -t tp2-app:${{ github.sha }} .
+
+      - name: Déployer l'application (environnement éphémère)
+        run: |
+          docker run -d --name tp2-app -p 5000:5000 tp2-app:${{ github.sha }}
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5000/health && echo " -> application prête" && exit 0
+            sleep 2
+          done
+          echo "L'application n'a pas démarré" && docker logs tp2-app && exit 1
+
+      # Scan actif complet (spider + attaques). -I : ZAP ne fait pas échouer
+      # le job sur de simples WARN ; c'est l'étape suivante qui décide.
+      - name: Scan OWASP ZAP (full scan)
+        run: |
+          chmod 777 .
+          docker run --rm --network host -v "$(pwd)":/zap/wrk:rw \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-full-scan.py -t http://localhost:5000 \
+              -c .zap/rules.tsv -m 2 -I \
+              -J zap-report.json -r zap-report.html
+
+      # RÈGLE DE BLOCAGE : échec si au moins une alerte de risque High
+      - name: Security gate DAST (risque High)
+        run: python3 scripts/zap_gate.py zap-report.json --fail-on high
+
+      - name: Publier les rapports ZAP
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapports-zap
+          path: |
+            zap-report.json
+            zap-report.html
+
+      # Destruction de l'environnement éphémère
+      - name: Détruire l'environnement éphémère
+        if: always()
+        run: docker rm -f tp2-app || true

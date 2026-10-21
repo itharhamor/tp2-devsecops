@@ -1,0 +1,29 @@
+# Environnement virtuel
+.venv/
+venv/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Rapports de sécurité générés (publiés comme artefacts par la CI)
+bandit-report.json
+semgrep-report.json
+zap-report.json
+zap-report.html
+zap.yaml
+
+# Secrets / configuration locale
+.env
+*.env
+
+# IDE et système
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
