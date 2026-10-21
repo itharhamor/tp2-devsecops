@@ -64,7 +64,7 @@ jobs:
 
       - name: Publier les rapports SAST
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rapports-sast
           path: |
@@ -130,11 +130,11 @@ jobs:
 
       # RÈGLE DE BLOCAGE : échec si au moins une alerte de risque High
       - name: Security gate DAST (risque High)
-        run: python3 scripts/zap_gate.py zap-report.json --fail-on high
+        run: python3 scripts/zap_gate.py zap-report.json --fail-on high --exceptions .zap/false-positives.tsv
 
       - name: Publier les rapports ZAP
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rapports-zap
           path: |

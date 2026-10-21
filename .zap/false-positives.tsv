@@ -1,0 +1,2 @@
+# pluginid	regex URL	justification
+43	/greet\?	Faux positif analysé : /greet ne lit aucun fichier, il renvoie seulement le texte reçu. La règle 43 confond ce reflet du paramètre (réponse qui varie avec l'entrée) avec une inclusion de fichier.

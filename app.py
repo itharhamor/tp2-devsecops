@@ -21,9 +21,14 @@ def security_headers(resp):
     """En-têtes de sécurité HTTP (réduit les alertes ZAP)."""
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"
-    resp.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'"
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'"
+    )
     resp.headers["Referrer-Policy"] = "no-referrer"
     resp.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+    resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    resp.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    resp.headers["Cross-Origin-Resource-Policy"] = "same-origin"
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
